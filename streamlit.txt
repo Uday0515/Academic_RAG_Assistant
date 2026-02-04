@@ -1,0 +1,15 @@
+import streamlit as st
+from app import get_answer
+
+st.title("📄 PDF RAG Chatbot")
+
+query = st.text_input("Ask a question from the PDF")
+
+if st.button("Ask"):
+    if query:
+        with st.spinner("Thinking..."):
+            answer = get_answer(query)
+        st.subheader("Answer")
+        st.write(answer)
+    else:
+        st.warning("Please enter a question")
