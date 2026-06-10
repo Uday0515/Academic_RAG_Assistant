@@ -11,3 +11,7 @@ python-dotenv
 fastapi
 uvicorn
 pydantic
+ragas
+datasets
+ragas
+datasets

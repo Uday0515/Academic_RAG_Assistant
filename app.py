@@ -80,14 +80,14 @@ def get_answer(query: str, vectorstore: FAISS, subject_filter: str = "All") -> t
     """
     # FAISS doesn't support metadata filtering natively in LangChain's as_retriever,
     # so we fetch a larger pool and filter manually when a subject is selected.
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 30})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
     docs = retriever.invoke(query)
 
     if subject_filter != "All":
         docs = [d for d in docs if d.metadata.get("subject") == subject_filter]
-        docs = docs[:20]  # cap after filtering
+        docs = docs[:40]  # cap after filtering
     else:
-        docs = docs[:20]
+        docs = docs[:40]
 
     if not docs:
         return "No relevant documents found for the selected subject filter.", []
