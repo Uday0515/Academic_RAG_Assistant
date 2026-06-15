@@ -24,45 +24,35 @@ client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 
 def load_vectorstore() -> FAISS:
-    """Load all PDFs from the data/ folder into a FAISS vectorstore."""
     documents = []
     for file in Path("data").rglob("*.pdf"):
         docs = PyPDFLoader(str(file)).load()
         for doc in docs:
             doc.metadata["source_file"] = file.name
-            # Use the parent folder name as the subject label
             doc.metadata["subject"] = file.parent.name if file.parent.name != "data" else "General"
         documents.extend(docs)
-
     chunks = text_splitter.split_documents(documents)
-    vectorstore = FAISS.from_documents(chunks, embeddings)
-    return vectorstore
+    return FAISS.from_documents(chunks, embeddings)
 
 
-def add_pdfs_to_vectorstore(vectorstore: FAISS, uploaded_files: list) -> FAISS:
-    """Add Streamlit-uploaded PDF files to an existing FAISS vectorstore."""
+def add_pdfs_to_vectorstore(vectorstore: FAISS, files: list) -> FAISS:
     new_docs = []
-    for uploaded_file in uploaded_files:
+    for file in files:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(uploaded_file.read())
+            tmp.write(file["bytes"])
             tmp_path = tmp.name
-
         docs = PyPDFLoader(tmp_path).load()
         for doc in docs:
-            doc.metadata["source_file"] = uploaded_file.name
+            doc.metadata["source_file"] = file["name"]
             doc.metadata["subject"] = "Uploaded"
         new_docs.extend(docs)
         os.unlink(tmp_path)
-
     if new_docs:
-        chunks = text_splitter.split_documents(new_docs)
-        vectorstore.add_documents(chunks)
-
+        vectorstore.add_documents(text_splitter.split_documents(new_docs))
     return vectorstore
 
 
 def get_subjects_from_data() -> list[str]:
-    """Scan data/ folder to get unique subject (subfolder) names."""
     subjects = set()
     for file in Path("data").rglob("*.pdf"):
         folder = file.parent.name
@@ -71,21 +61,12 @@ def get_subjects_from_data() -> list[str]:
 
 
 def get_answer(query: str, vectorstore: FAISS, subject_filter: str = "All") -> tuple[str, list[dict]]:
-    """
-    Retrieve relevant chunks and generate an answer using Gemini.
-
-    Returns:
-        answer (str): The generated answer.
-        sources (list[dict]): Unique source citations with file, page, subject.
-    """
-    # FAISS doesn't support metadata filtering natively in LangChain's as_retriever,
-    # so we fetch a larger pool and filter manually when a subject is selected.
     retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
     docs = retriever.invoke(query)
 
     if subject_filter != "All":
         docs = [d for d in docs if d.metadata.get("subject") == subject_filter]
-        docs = docs[:40]  # cap after filtering
+        docs = docs[:40]
     else:
         docs = docs[:40]
 
@@ -114,7 +95,6 @@ Answer:"""
         contents=prompt
     )
 
-    # Build deduplicated source citations
     seen = set()
     sources = []
     for doc in docs:

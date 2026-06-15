@@ -1,7 +1,9 @@
 import streamlit as st
 import pathlib
 import datetime
-from app import load_vectorstore, add_pdfs_to_vectorstore, get_answer, get_subjects_from_data
+import requests
+
+API = "http://localhost:8000"
 
 st.set_page_config(
     page_title="Dept. of Robotics & AI — Chatbot",
@@ -86,9 +88,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
     background: #ffffff !important;
     box-shadow: 0 2px 12px rgba(10,22,40,0.08) !important;
 }
-[data-testid="stChatInput"]:focus-within {
-    border-color: #1a3a6b !important;
-}
+[data-testid="stChatInput"]:focus-within { border-color: #1a3a6b !important; }
 [data-testid="stSidebar"] {
     background: #ffffff !important;
     border-right: 1px solid #e2e8f4 !important;
@@ -133,10 +133,6 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
 </style>
 """, unsafe_allow_html=True)
 
-if "vectorstore" not in st.session_state:
-    with st.spinner("Initialising knowledge base…"):
-        st.session_state.vectorstore = load_vectorstore()
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -165,7 +161,10 @@ with st.sidebar:
     st.caption("Academic Knowledge Assistant")
 
     st.markdown('<p class="sidebar-section">📂 Filter by Subject</p>', unsafe_allow_html=True)
-    subjects = get_subjects_from_data()
+    try:
+        subjects = requests.get(f"{API}/subjects").json().get("subjects", [])
+    except:
+        subjects = []
     options = ["All Subjects"] + subjects + (["Uploaded"] if st.session_state.uploaded_names else [])
     selected_subject = st.selectbox("Subject", options, label_visibility="collapsed")
     subject_filter = "All" if selected_subject == "All Subjects" else selected_subject
@@ -177,7 +176,8 @@ with st.sidebar:
         new_files = [f for f in uploaded_files if f.name not in st.session_state.uploaded_names]
         if new_files:
             with st.spinner(f"Processing {len(new_files)} PDF(s)…"):
-                st.session_state.vectorstore = add_pdfs_to_vectorstore(st.session_state.vectorstore, new_files)
+                files_payload = [("files", (f.name, f.read(), "application/pdf")) for f in new_files]
+                requests.post(f"{API}/upload", files=files_payload)
                 for f in new_files:
                     st.session_state.uploaded_names.add(f.name)
             st.success(f"✅ {len(new_files)} PDF(s) added!")
@@ -222,7 +222,7 @@ with st.sidebar:
   .user{{background:#eef3fc;border-left:3px solid #1a3a6b}}
   .assistant{{background:#ffffff;border:1px solid #e2e8f4}}
 </style></head><body>
-<h1>🤖 Department of Robotics and Artificial Intelligence</h1>
+<h1>Department of Robotics and Artificial Intelligence</h1>
 <p class="sub">Academic Knowledge Assistant &nbsp;|&nbsp; {timestamp}</p><hr>
 {msg_html}</body></html>"""
 
@@ -240,7 +240,7 @@ with st.sidebar:
 if not st.session_state.messages:
     st.markdown("""
     <div class="welcome-card">
-        <strong>👋 Welcome to the Academic Knowledge Assistant</strong><br>
+        <strong>Welcome to the Academic Knowledge Assistant</strong><br>
         Ask any question related to your course materials — syllabi, modules, question papers,
         or lecture notes. Use the <strong>subject filter</strong> in the sidebar to narrow results
         to a specific subject, or upload additional PDFs to expand the knowledge base.
@@ -260,11 +260,12 @@ if user_query:
 
     with st.chat_message("assistant"):
         with st.spinner("Searching knowledge base…"):
-            answer, sources = get_answer(
-                user_query,
-                st.session_state.vectorstore,
-                subject_filter,
-            )
+            response = requests.post(f"{API}/ask", json={
+                "query": user_query,
+                "subject_filter": subject_filter
+            })
+            data = response.json()
+            answer = data["answer"]
         st.markdown(answer)
 
-    st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
+    st.session_state.messages.append({"role": "assistant", "content": answer})
