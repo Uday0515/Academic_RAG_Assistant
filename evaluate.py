@@ -1,106 +1,99 @@
 import os
+import sys
+sys.path.append("backend")
+
 from dotenv import load_dotenv
 from datasets import Dataset
 from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall
-from app import load_vectorstore, get_answer
+from ragas.metrics.collections import faithfulness, answer_relevancy, context_precision, context_recall
+from ragas.llms import LangchainLLMWrapper
+from ragas.embeddings import LangchainEmbeddingsWrapper
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from app import load_vectorstore, get_answer  # type: ignore
 
 load_dotenv()
 
 
 def prepare_test_data():
-    test_queries = [
+    return [
         {
-            "question": "What are the objectives of robotics?",
-            "ground_truth": "Robotics teaches kinematics, dynamics, and control systems.",
+            "question": "What are the course outcomes of Drive System for Robotics?",
+            "ground_truth": "copy the actual CO text from your PDF here",
         },
         {
-            "question": "List the modules in AI curriculum",
-            "ground_truth": "Modules include Machine Learning, Deep Learning, NLP, and Computer Vision.",
+            "question": "What is covered in Module 3 of Drive System for Robotics?",
+            "ground_truth": "copy the actual module 3 content from your PDF here",
         },
         {
-            "question": "What is the syllabus structure?",
-            "ground_truth": "The syllabus is organized by units, course objectives, and modules.",
+            "question": "What is the syllabus structure for 5th semester?",
+            "ground_truth": "copy the actual syllabus structure from your PDF here",
         },
     ]
-    return test_queries
 
 
 def run_rag_pipeline(query, vectorstore):
     answer, sources = get_answer(query, vectorstore)
-    
     retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
     retrieved_docs = retriever.invoke(query)
-    
     context_list = [doc.page_content for doc in retrieved_docs[:40]]
-    
     return answer, context_list
 
 
 def create_evaluation_dataset(test_queries, vectorstore):
-    questions = []
-    answers = []
-    contexts_list = []
-    ground_truths = []
-    
+    questions, answers, contexts_list, ground_truths = [], [], [], []
+
     for test in test_queries:
-        question = test["question"]
-        ground_truth = test["ground_truth"]
-        
-        answer, contexts = run_rag_pipeline(question, vectorstore)
-        
-        questions.append(question)
+        answer, contexts = run_rag_pipeline(test["question"], vectorstore)
+        questions.append(test["question"])
         answers.append(answer)
         contexts_list.append(contexts)
-        ground_truths.append(ground_truth)
-    
-    dataset = Dataset.from_dict({
+        ground_truths.append(test["ground_truth"])
+
+    return Dataset.from_dict({
         "question": questions,
         "answer": answers,
         "contexts": contexts_list,
         "ground_truth": ground_truths,
     })
-    
-    return dataset
 
 
 def evaluate_rag_system(test_queries, vectorstore):
+    gemini_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+    gemini_embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+
+    langchain_llm = LangchainLLMWrapper(gemini_llm)
+    langchain_embeddings = LangchainEmbeddingsWrapper(gemini_embeddings)
+
     dataset = create_evaluation_dataset(test_queries, vectorstore)
-    
-    evaluation_scores = evaluate(
+
+    scores = evaluate(
         dataset=dataset,
-        metrics=[
-            faithfulness,
-            answer_relevancy,
-            context_precision,
-            context_recall,
-        ],
+        metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
+        llm=langchain_llm,
+        embeddings=langchain_embeddings,
     )
-    
-    return evaluation_scores
+    return scores
 
 
 def display_results(scores):
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("RAGAS EVALUATION RESULTS")
-    print("="*50)
-    
+    print("=" * 50)
     for metric_name, score_value in scores.items():
         print(f"{metric_name}: {score_value:.4f}")
-    
-    print("="*50 + "\n")
+    print("=" * 50 + "\n")
 
 
 def main():
     print("Loading vectorstore...")
     vectorstore = load_vectorstore()
-    
+
     print("Preparing test queries...")
     test_queries = prepare_test_data()
-    
+
     print(f"Running evaluation on {len(test_queries)} queries...")
     scores = evaluate_rag_system(test_queries, vectorstore)
-    
+
     display_results(scores)
 
 
