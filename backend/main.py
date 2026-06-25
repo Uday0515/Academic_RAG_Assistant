@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
-from app import load_vectorstore, add_pdfs_to_vectorstore, get_answer, get_subjects_from_data
+from backend.app import load_vectorstore, add_pdfs_to_vectorstore, get_answer, get_subjects_from_data
 
 vectorstore = None
 

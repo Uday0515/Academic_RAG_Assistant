@@ -13,4 +13,6 @@ uvicorn
 pydantic
 ragas
 datasets
+langchain-google-genai
+python-multipart
 
